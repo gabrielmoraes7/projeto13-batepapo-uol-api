@@ -80,9 +80,83 @@ app.post('/participants', async (req, res) => {
 
 });  
 
+//rota get /participants
+app.get('/participants', async (req, res) => {
+    try {
+        const participants = await db.collection('participants').find().toArray();
+            return res.status(200).send(participants);
+    } catch (error) {
+        return res.status(500).send(error.message);
+    } 
+});
+
+//rota post /messages - Salvar as mensagens
+app.post('/messages', async (req, res) => {
+
+    const { to, text, type } = req.body;
+    const user = req.headers.user == undefined ? '' : Buffer.from(req.headers['user'], 'latin1').toString('utf-8');
+    
+    if (user === '') {
+        return res.sendStatus(422);
+    }
+
+    try {
+        const userLoggedIn = await db.collection('participants').findOne({ name: user });
+
+        if (!userLoggedIn) {
+            return res.sendStatus(422);
+        }
+    } catch (error) {
+        return res.status(500).send(error.message);
+    } 
+
+    const validation = messageSchema.validate(req.body, { abortEarly: false });
+
+    if (validation.error) {
+        const errors = validation.error.details.map((detail) => detail.message);
+        return res.status(422).send(errors);
+    }
+
+    try {
+        await db.collection('messages').insertOne({
+            from: user,
+            to: stripHtml(to).result.trim(),
+            text: stripHtml(text).result.trim(),
+            type: stripHtml(type).result.trim(),
+            time: dayjs().format('HH:mm:ss')
+        });
+        return res.sendStatus(201);
+    } catch (error) {
+        return res.status(500).send(error.message);
+    }
+});
+
+//requisição de Mensagens - GET
+app.get('/messages', async (req, res) => {
+    try {
+        const { limit } = req.query;
+        const user = Buffer.from(req.headers['user'], 'latin1').toString('utf-8');
+        if (limit) {
+
+            if (isNaN(limit) || (!isNaN(limit) && limit <= 0)) return res.sendStatus(422);
+
+            const dbMessages = await db.collection('messages')
+                .find({ $or: [{ to: 'Todos' }, { to: user }, { from: user }, { type: 'message' },], }).toArray();
+                return res.send([...dbMessages].reverse().slice(0, limit).reverse());
+        } else {
+            console.log(chalk.bold.green(`User ${user} has requested all messages`));
+            const dbMessages = await db.collection('messages')
+                .find({ $or: [{ to: 'Todos' }, { to: user }, { from: user }] }).toArray();
+
+                return res.send([...dbMessages]);
+        }
+    } catch (error) {
+        return res.status(500).send(error.message);
+    }
+});
+
 app.listen(port, () => {
     console.log(`Server listening at http://localhost:${port}`);
 });
-
 
 
