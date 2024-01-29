@@ -155,6 +155,52 @@ app.get('/messages', async (req, res) => {
     }
 });
 
+//requisição de Status - POST
+app.post('/status', async (req, res) => {
+    const user = req.headers.user;
+    if (!user) {
+        return res.sendStatus(404);
+    }
+
+    const db = mongoClient.db();
+    const participantsCollection = db.collection('participants');
+    const participantExists = await participantsCollection.findOne({ name: user });
+    
+    if (!participantExists) {
+        return res.sendStatus(404);
+    }
+
+    await participantsCollection.updateOne(
+        { name: user },
+        { $set: { lastStatus: Date.now() } }
+    );
+    res.sendStatus(200);
+});
+
+setInterval(async () => {
+    try {
+        const participants = await db.collection('participants').find({ lastStatus: { $lte: Date.now() - 10000 } }).toArray();
+
+        participants.forEach(async (participant) => {
+
+            await db.collection('messages').insertOne({
+                from: participant.name,
+                to: 'Todos',
+                text: `sai da sala...`,
+                type: 'status',
+                time: dayjs().format('HH:mm:ss'),
+            });
+
+            db.collection('participants').deleteOne({
+                name: participant.name,
+            });
+        });
+
+    } catch (error) {
+        console.log(error.message);
+    }
+}, 15000);
+
 app.listen(port, () => {
     console.log(`Server listening at http://localhost:${port}`);
 });
